@@ -14,6 +14,7 @@
 #include <pcl/features/shot_omp.h>
 #include <pcl/features/board.h>
 #include <pcl/filters/filter.h>
+#include <pcl/filters/uniform_sampling.h>
 #include <pcl/recognition/cg/hough_3d.h>
 #include <pcl/recognition/cg/geometric_consistency.h>
 #include <pcl/visualization/pcl_visualizer.h>
@@ -30,6 +31,8 @@ vector<pcl::PointCloud<pcl::Normal>> step_points_normals;
 vector<pcl::PointCloud<pcl::SHOT352>> step_points_descriptors;
 
 pcl::NormalEstimationOMP<pcl::PointXYZRGB, pcl::Normal> norm_est;
+pcl::UniformSampling<pcl::PointXYZRGB> uniform_sampling;
+pcl::SHOTEstimationOMP<pcl::PointXYZRGB, pcl::Normal, pcl::SHOT352> descr_est;
 
 void cloudCallback (const sensor_msgs::PointCloud2& msg){
     
@@ -70,19 +73,28 @@ int main (int argc, char** argv){
         break;
 
         // Normals
-        pcl::PointCloud<pcl::Normal> model_normals;
+        pcl::PointCloud<pcl::Normal>::Ptr model_normals (new pcl::PointCloud<pcl::Normal> ());
 
         norm_est.setKSearch (10);
         norm_est.setInputCloud (cloud_ptr);
-        norm_est.compute (model_normals);
+        norm_est.compute (*model_normals);
 
-        step_points_normals.push_back(model_normals);
+        step_points_normals.push_back(*model_normals);
 
         // Keypoints
-        //step_keypoints.push_back();
+        pcl::PointCloud<pcl::PointXYZRGB>::Ptr model_keypoints (new pcl::PointCloud<pcl::PointXYZRGB> ());
+        uniform_sampling.setInputCloud (cloud_ptr);
+        //uniform_sampling.setRadiusSearch (model_ss_);
+        uniform_sampling.filter (*model_keypoints);
+        step_keypoints.push_back(*model_keypoints);
 
         // Descriptors
-        //step_points_descriptors.push_back();
+          pcl::PointCloud<pcl::SHOT352>::Ptr model_descriptors (new pcl::PointCloud<pcl::SHOT352> ());
+        descr_est.setInputCloud (model_keypoints);
+        descr_est.setInputNormals (model_normals);
+        descr_est.setSearchSurface (cloud_ptr);
+        descr_est.compute (*model_descriptors);
+        step_points_descriptors.push_back(*model_descriptors);
     }
 
     ros::spin();

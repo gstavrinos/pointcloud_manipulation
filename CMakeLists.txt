@@ -11,6 +11,11 @@ find_package(catkin REQUIRED COMPONENTS
   pointcloud_annotator
 )
 
+find_package(PCL 1.3 REQUIRED COMPONENTS common io)
+include_directories(${PCL_INCLUDE_DIRS})
+link_directories(${PCL_LIBRARY_DIRS})
+add_definitions(${PCL_DEFINITIONS})
+
 catkin_package()
 
 include_directories(
