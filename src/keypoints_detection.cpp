@@ -7,20 +7,18 @@
 #include <sensor_msgs/point_cloud2_iterator.h>
 
 
-#include <pcl/io/pcd_io.h>
 #include <pcl/point_cloud.h>
-#include <pcl/correspondence.h>
-#include <pcl/features/normal_3d_omp.h>
-#include <pcl/features/shot_omp.h>
 #include <pcl/features/board.h>
-#include <pcl/filters/filter.h>
-#include <pcl/filters/uniform_sampling.h>
-#include <pcl/recognition/cg/hough_3d.h>
-#include <pcl/recognition/cg/geometric_consistency.h>
-#include <pcl/visualization/pcl_visualizer.h>
-#include <pcl/kdtree/kdtree_flann.h>
-#include <pcl/kdtree/impl/kdtree_flann.hpp>
+#include <pcl/correspondence.h>
+#include <pcl/features/shot_omp.h>
 #include <pcl/common/transforms.h>
+#include <pcl/kdtree/kdtree_flann.h>
+#include <pcl/features/normal_3d_omp.h>
+#include <pcl/recognition/cg/hough_3d.h>
+#include <pcl/filters/uniform_sampling.h>
+#include <pcl/kdtree/impl/kdtree_flann.hpp>
+#include <pcl/visualization/pcl_visualizer.h>
+#include <pcl/recognition/cg/geometric_consistency.h>
 
 using namespace std;
 
@@ -37,6 +35,8 @@ pcl::SHOTEstimationOMP<pcl::PointXYZRGB, pcl::Normal, pcl::SHOT352> descr_est;
 
 bool viz = true;
 bool use_gc_ = true;
+bool super_debug = false;
+string frame_id = "base_link";
 
 void cloudCallback (const sensor_msgs::PointCloud2& msg){
     pcl::PCLPointCloud2 pcl_cloud;
@@ -56,7 +56,7 @@ void cloudCallback (const sensor_msgs::PointCloud2& msg){
     // Keypoints
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr scene_keypoints (new pcl::PointCloud<pcl::PointXYZRGB> ());
     uniform_sampling.setInputCloud (cloud_ptr);
-    uniform_sampling.setRadiusSearch (0.1f);
+    uniform_sampling.setRadiusSearch (0.05f);
     uniform_sampling.filter (*scene_keypoints);
 
     // Descriptors
@@ -89,7 +89,7 @@ void cloudCallback (const sensor_msgs::PointCloud2& msg){
             }
 
         }
-        std::cout << "Correspondences found: " << model_scene_corrs->size () << std::endl;
+        cout << "Correspondences found: " << model_scene_corrs->size () << endl;
 
 
         vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f> > rot_translations;
@@ -133,8 +133,8 @@ void cloudCallback (const sensor_msgs::PointCloud2& msg){
         // Geometric Consistency (GC)
         else{
             pcl::GeometricConsistencyGrouping<pcl::PointXYZRGB, pcl::PointXYZRGB> gc_clusterer;
-            gc_clusterer.setGCSize (10000.0f);
-            gc_clusterer.setGCThreshold (3.0f);
+            gc_clusterer.setGCSize (0.1f);
+            gc_clusterer.setGCThreshold (5.0f);
 
             gc_clusterer.setInputCloud (step_keypoints[s]);
             gc_clusterer.setSceneCloud (scene_keypoints);
@@ -157,11 +157,42 @@ void cloudCallback (const sensor_msgs::PointCloud2& msg){
                 pcl::PCLPointCloud2 pcl_cloud;
                 pcl::toPCLPointCloud2(*rotated_model, pcl_cloud);
                 pcl_conversions::fromPCL(pcl_cloud, output);
+                output.header.frame_id = frame_id;
                 pub.publish (output);
-
-
-
             }
+
+        }
+
+        if(super_debug){
+            pcl::visualization::PCLVisualizer viewer ("Correspondence Grouping");
+            viewer.addPointCloud (cloud_ptr, "scene_cloud");
+
+            pcl::PointCloud<pcl::PointXYZRGB>::Ptr off_scene_model (new pcl::PointCloud<pcl::PointXYZRGB> ());
+            pcl::PointCloud<pcl::PointXYZRGB>::Ptr off_scene_model_keypoints (new pcl::PointCloud<pcl::PointXYZRGB> ());
+
+            if (true){
+                pcl::transformPointCloud (*steps[s], *off_scene_model, Eigen::Vector3f (-1,0,0), Eigen::Quaternionf (1, 0, 0, 0));
+                pcl::transformPointCloud (*step_keypoints[s], *off_scene_model_keypoints, Eigen::Vector3f (-1,0,0), Eigen::Quaternionf (1, 0, 0, 0));
+
+                pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZRGB> off_scene_model_color_handler (off_scene_model, 255, 255, 128);
+                viewer.addPointCloud (off_scene_model, off_scene_model_color_handler, "off_scene_model");
+            }
+
+            for (size_t i = 0; i < rot_translations.size (); ++i){
+                pcl::PointCloud<pcl::PointXYZRGB>::Ptr rotated_model (new pcl::PointCloud<pcl::PointXYZRGB> ());
+                pcl::transformPointCloud (*steps[s], *rotated_model, rot_translations[i]);
+
+                std::stringstream ss_cloud;
+                ss_cloud << "instance" << i;
+
+                pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZRGB> rotated_model_color_handler (rotated_model, 255, 0, 0);
+                viewer.addPointCloud (rotated_model, rotated_model_color_handler, ss_cloud.str ());
+            }
+
+            while (!viewer.wasStopped ()){
+                viewer.spinOnce ();
+            }
+
         }
     }
 
@@ -176,9 +207,11 @@ int main (int argc, char** argv){
     nh.param("poi_detection/input_topic", in_topic, string("zed/point_cloud/cloud_registered"));
     nh.param("poi_detection/algorithm", algorithm, string("GC")); // the alternative is "Hough"
     nh.param("poi_detection/enable_viz", viz, true);
+    nh.param("poi_detection/frame_id", frame_id, string("base_link")); // the alternative is "Hough"
+    nh.param("poi_detection/super_debug", super_debug, true);
 
     pub = nh.advertise<sensor_msgs::PointCloud2> ("poi_detection/viz", 1);
-
+use_gc_ = false;
     if(algorithm == "Hough"){
         use_gc_ = false;
     }
@@ -220,7 +253,7 @@ int main (int argc, char** argv){
         // Keypoints
         pcl::PointCloud<pcl::PointXYZRGB>::Ptr model_keypoints (new pcl::PointCloud<pcl::PointXYZRGB> ());
         uniform_sampling.setInputCloud (cloud_ptr);
-        uniform_sampling.setRadiusSearch (0.01f);
+        uniform_sampling.setRadiusSearch (0.05f);
         uniform_sampling.filter (*model_keypoints);
         step_keypoints.push_back(model_keypoints);
 
