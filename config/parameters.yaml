@@ -1,0 +1,18 @@
+input_topic: "zed/point_cloud/cloud_registered/limitcloud"
+scene_descriptors_search_radius: 15
+model_descriptors_search_radius: 15
+scene_uniform_sampling_radius: 20
+model_uniform_sampling_radius: 5
+maximum_neighbors_distance: 0.25
+scene_k_means_search_size: 10
+model_k_means_search_size: 10
+frame_id: "base_link"
+enable_viz: true
+cg_threshold: 5
+algorithm: "GC"
+rf_radius: 10
+cg_size: 10
+
+
+# Careful with this, mate!
+super_debug: true

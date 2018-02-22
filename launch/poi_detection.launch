@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<launch>
+    <node pkg="pointcloud_manipulation" type="keypoints_detection" respawn="false" name="poi_detection" output="screen">
+        <rosparam file="$(find pointcloud_manipulation)/config/parameters.yaml" command="load" />
+    </node>
+</launch>
